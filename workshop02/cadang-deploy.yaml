@@ -1,0 +1,63 @@
+---
+# create namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: cadang-ns
+  labels:
+    app: cadang-app
+
+---
+# create deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  name: cadang-deploy
+  namespace: cadang-ns
+  labels:
+    app: cadang-app
+spec:
+  replicas: 3
+  minReadySeconds: 5
+  # rolling update
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 30%
+      maxUnavailable: 30%
+  selector: 
+    matchLabels:
+      app: cadang-app
+  # pod template
+  template:
+    metadata: 
+      name: cadang-po
+      labels:
+        app: cadang-app
+    spec:
+      containers:
+      - name: cadang-app-container
+        image: wendyloy/workshop02:v1.1
+        # image: chukmunnlee/cfdsa-fortune:v1 # application upgrade
+        imagePullPolicy: IfNotPresent # default is Always
+        ports:
+        - name: web-port # requirements: 16 chars long 
+          containerPort: 3000
+          protocol: TCP
+
+---
+# create load balancer
+apiVersion: v1
+kind: Service
+metadata: 
+  name: cadang-svc 
+  namespace: cadang-ns
+  labels: 
+    app: cadang-app
+spec: 
+  type: LoadBalancer
+  selector: 
+    app: cadang-app
+  ports:
+  - port: 80
+    targetPort: web-port
