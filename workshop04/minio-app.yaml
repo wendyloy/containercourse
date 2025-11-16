@@ -1,0 +1,129 @@
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-hsvc
+  namespace: minions
+spec:
+  clusterIP: None
+  selector:
+    app: minio
+  ports:
+  - name: data-port
+    port: 9000
+    targetPort: data-port
+  - name: console-port
+    port: 9001
+    targetPort: console-port
+
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio-sts
+  namespace: minions
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: minio
+  serviceName: minio-hsvc
+  volumeClaimTemplates:
+  - metadata:
+      name: data-vol
+    spec:
+      accessModes: ["ReadWriteOncePod"]
+      resources:
+        requests:
+          storage: 1Gi
+      storageClassName: do-block-storage
+  template:
+    metadata:
+      name: minio-po
+      labels:
+        app: minio
+    spec:
+      containers:
+      - name: minio-container
+        image: minio/minio
+        args: 
+        - server 
+        - --address=:9000 
+        - --console-address=:9001 
+        - http://minio-sts-{0...2}.minio-hsvc.minions.svc.cluster.local/data
+        envFrom:
+        - configMapRef:
+            name: minio-cm
+        - secretRef:
+            name: minio-secret
+        livenessProbe:
+          initialDelaySeconds: 60
+          periodSeconds: 30
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - "mc ready local || exit 1"
+        resources:
+          requests:
+            cpu: 200m
+            memory: 250Mi
+          limits:
+            cpu: 200m
+            memory: 250Mi
+        ports:
+        - name: data-port
+          containerPort: 9000
+        - name: console-port
+          containerPort: 9001
+        volumeMounts:
+        - name: data-vol
+          mountPath: /data
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-svc
+  namespace: minions
+spec:
+  type: ClusterIP
+  selector:
+    app: minio
+  ports:
+  - name: data-port
+    port: 9000
+    targetPort: data-port
+  - name: console-port
+    port: 9001
+    targetPort: console-port
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: minio-ing
+  namespace: minions
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: data-146.190.95.122.sslip.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: minio-hsvc
+            port:
+              name: data-port
+  - host: console-146.190.95.122.sslip.io
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: minio-svc
+            port:
+              name: console-port
